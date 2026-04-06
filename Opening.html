@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rain Studio | Game Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        body { background-color: #020202; color: #e5e7eb; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        #bg-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+        .font-orbitron { font-family: 'Orbitron', sans-serif; }
+        
+        /* Intro Sequence */
+        #intro-overlay {
+            position: fixed; inset: 0; background: #000; z-index: 200;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 1s ease;
+        }
+        .intro-text { opacity: 0; transform: translateY(20px); transition: all 0.8s ease; }
+        .intro-active { opacity: 1; transform: translateY(0); }
+
+        /* Smooth UI Entrance */
+        #main-content { opacity: 0; transition: opacity 1.5s ease; }
+
+        .glass {
+            background: rgba(10, 10, 10, 0.7); backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.08); transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* --- DESKTOP CURSOR SLIDE EFFECT --- */
+        @media (min-width: 768px) {
+            .game-card { width: 100%; height: 100px; overflow: hidden; }
+            .game-card:hover { 
+                height: 180px; 
+                border-color: #06b6d4; 
+                box-shadow: 0 10px 30px -10px rgba(6, 182, 212, 0.3);
+            }
+            .card-details { opacity: 0; transform: translateY(10px); transition: all 0.4s ease; }
+            .game-card:hover .card-details { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Rules & Preview Modals */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95);
+            z-index: 150; padding: 20px; overflow-y: auto;
+        }
+        .rule-card { max-width: 600px; margin: 40px auto; }
+        
+        /* Mobile fixes */
+        @media (max-width: 640px) {
+            .font-orbitron { font-size: 0.9rem; }
+            h1 { font-size: 2.5rem !important; }
+            .game-card { margin-bottom: 1rem; }
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <canvas id="bg-canvas"></canvas>
+
+    <audio id="bg-music" loop>
+        <source src="https://assets.mixkit.co/music/preview/mixkit-deep-space-97.mp3" type="audio/mpeg">
+    </audio>
+
+    <div id="intro-overlay">
+        <div id="intro-logo" class="intro-text w-20 h-20 bg-cyan-500 rounded-2xl flex items-center justify-center mb-6 glow-button">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+        </div>
+        <h2 id="intro-title" class="intro-text font-orbitron text-2xl tracking-widest text-white mb-2">RAIN STUDIO</h2>
+        <p id="intro-sub" class="intro-text text-cyan-400 font-orbitron text-[10px] tracking-[0.4em] uppercase">Presents</p>
+        <div id="intro-credits" class="intro-text mt-12 text-center max-w-xs text-gray-500 text-xs leading-relaxed uppercase tracking-widest">
+            In collaboration with <span class="text-white">Gemini AI</span> & <span class="text-white">GitHub</span><br>
+            A 3D Multiplayer Multiverse Simulation
+        </div>
+    </div>
+
+    <div id="main-content">
+        <nav class="p-6 flex justify-between items-center max-w-7xl mx-auto relative z-10">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-cyan-500 rounded-lg flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                    </svg>
+                </div>
+                <span class="font-orbitron text-xl font-bold tracking-widest text-white">RAIN STUDIO</span>
+            </div>
+            <div class="flex items-center gap-6">
+                <button id="audio-toggle" onclick="toggleAudio()" class="text-[10px] text-cyan-400 font-orbitron tracking-widest border border-cyan-500/30 px-3 py-1 rounded hover:bg-cyan-500 hover:text-black transition-all">SOUND: OFF</button>
+                <div class="hidden md:block text-[10px] text-gray-500 font-orbitron tracking-widest">VER 2.0.26</div>
+            </div>
+        </nav>
+
+        <header class="max-w-5xl mx-auto text-center py-12 px-4 relative z-10">
+            <h1 class="font-orbitron text-5xl md:text-8xl font-bold mb-6 text-white tracking-tighter">MULTIVERSE</h1>
+            <div class="mb-10 max-w-2xl mx-auto">
+                <p class="text-cyan-400 font-orbitron text-[10px] tracking-[0.3em] uppercase mb-4">Simulation Briefing</p>
+                <p class="text-gray-400 text-lg font-light leading-relaxed">
+                    Rain Studio presents a high-fidelity multiplayer hub where physical reality meets psychological depth. Navigate 3D racing circuits, solve social enigmas, and survive the anomalies of the void. Your journey through the multiverse begins here.
+                </p>
+            </div>
+            <a href="index.html" class="inline-block bg-cyan-500 text-black font-orbitron font-bold py-4 px-12 rounded-full text-lg shadow-lg hover:scale-105 transition-transform">ENTER LOBBY</a>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-6 pb-24 relative z-10">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div onclick="showRules('herd')" class="glass p-6 rounded-2xl game-card cursor-pointer border-t-2 border-cyan-500/30">
+                    <h3 class="font-orbitron text-white text-lg mb-2">HERD MENTALITY</h3>
+                    <p class="text-xs text-gray-500 mb-4">Social Experiment • Multiplayer</p>
+                    <div class="card-details text-xs text-gray-400 leading-relaxed">Think like the crowd. Avoid being the odd one out or face the Pink Cow.</div>
+                </div>
+                <div onclick="showRules('racing')" class="glass p-6 rounded-2xl game-card cursor-pointer border-t-2 border-yellow-500/30">
+                    <h3 class="font-orbitron text-white text-lg mb-2">PRO PIT RACING</h3>
+                    <p class="text-xs text-gray-500 mb-4">3D Simulation • High Speed</p>
+                    <div class="card-details text-xs text-gray-400 leading-relaxed">Master the Nissan GT-R on rain-slicked neon tracks. Manage pit stops and nitro.</div>
+                </div>
+                <div onclick="showRules('contact')" class="glass p-6 rounded-2xl game-card cursor-pointer border-t-2 border-purple-500/30">
+                    <h3 class="font-orbitron text-white text-lg mb-2">CONTACT</h3>
+                    <p class="text-xs text-gray-500 mb-4">Word Logic • Team Battle</p>
+                    <div class="card-details text-xs text-gray-400 leading-relaxed">A psychological word-guessing battle. Connect clues to break the defender's shield.</div>
+                </div>
+                <div onclick="showRules('exit')" class="glass p-6 rounded-2xl game-card cursor-pointer border-t-2 border-red-500/30">
+                    <h3 class="font-orbitron text-white text-lg mb-2">EXIT 8</h3>
+                    <p class="text-xs text-gray-500 mb-4">Psychological • Observation</p>
+                    <div class="card-details text-xs text-gray-400 leading-relaxed">Do not ignore the anomalies. One mistake sends you back to the beginning.</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="rules-modal" class="modal-overlay">
+        <div class="rule-card glass p-8 rounded-3xl relative">
+            <button onclick="closeRules()" class="absolute top-4 right-4 text-gray-500 hover:text-white">✕ Close</button>
+            <h2 id="rule-title" class="font-orbitron text-2xl text-cyan-400 mb-4 uppercase tracking-tighter"></h2>
+            <div id="rule-content" class="text-gray-300 text-sm space-y-4 leading-relaxed"></div>
+            <div class="mt-8">
+                <button onclick="openPreview()" id="preview-btn" class="hidden w-full py-3 bg-yellow-500 text-black font-orbitron font-bold rounded-xl">VIEW 3D NISSAN & CIRCUIT</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="preview-modal" class="modal-overlay !p-0">
+        <button onclick="closePreview()" class="absolute top-5 right-5 z-[160] bg-red-600 px-4 py-2 rounded-lg font-orbitron text-xs">EXIT PREVIEW</button>
+        <div id="modal-canvas-container"></div>
+    </div>
+
+    <script>
+        // --- AUDIO LOGIC ---
+        const music = document.getElementById('bg-music');
+        const audioBtn = document.getElementById('audio-toggle');
+        function toggleAudio() {
+            if (music.paused) {
+                music.play();
+                audioBtn.innerText = "SOUND: ON";
+                audioBtn.classList.add('bg-cyan-500', 'text-black');
+            } else {
+                music.pause();
+                audioBtn.innerText = "SOUND: OFF";
+                audioBtn.classList.remove('bg-cyan-500', 'text-black');
+            }
+        }
+
+        // --- 1. INTRO ANIMATION ---
+        window.addEventListener('DOMContentLoaded', () => {
+            const sequence = [
+                { id: 'intro-logo', delay: 500 },
+                { id: 'intro-title', delay: 1200 },
+                { id: 'intro-sub', delay: 1800 },
+                { id: 'intro-credits', delay: 2500 }
+            ];
+
+            sequence.forEach(item => {
+                setTimeout(() => document.getElementById(item.id).classList.add('intro-active'), item.delay);
+            });
+
+            setTimeout(() => {
+                document.getElementById('intro-overlay').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('intro-overlay').style.display = 'none';
+                    document.getElementById('main-content').style.opacity = '1';
+                    // Auto-start music (most browsers require interaction first, so toggleAudio handles it)
+                }, 1000);
+            }, 5500);
+        });
+
+        // --- 2. GAME RULES DATA ---
+        const gameRules = {
+            herd: {
+                title: "Herd Mentality Rules",
+                content: "* A question is asked (e.g., 'What is the best fruit?').<br>* Goal: Write the answer you think **most** people will choose.<br>* If you are in the majority, you win points.<br>* If your answer is unique, you get the **Pink Cow**. You cannot win points until someone else takes it from you!"
+            },
+            racing: {
+                title: "Pro Pit Racing Rules",
+                content: "* Control your Nissan using WASD/Arrows.<br>* Use **SHIFT** for NOS (limited supply).<br>* Pit Entry: Slow down in the pit lane to repair damage and refuel.<br>* Stay on the circuit! Off-road driving slows your speed significantly."
+            },
+            contact: {
+                title: "Contact Rules",
+                content: "* One defender thinks of a word.<br>* Players try to guess the word by providing clues for other words starting with the same letters.<br>* If two players say the word at the same time, the defender must reveal the next letter!"
+            },
+            exit: {
+                title: "Exit 8 Rules",
+                content: "* Walk through the corridor toward Exit 8.<br>* **Rule 1:** If you notice an anomaly (anything strange), turn around immediately.<br>* **Rule 2:** If there are no anomalies, keep going.<br>* Missing an anomaly resets your progress to Exit 0."
+            }
+        };
+
+        function showRules(game) {
+            const modal = document.getElementById('rules-modal');
+            const title = document.getElementById('rule-title');
+            const content = document.getElementById('rule-content');
+            const previewBtn = document.getElementById('preview-btn');
+
+            title.innerText = gameRules[game].title;
+            content.innerHTML = gameRules[game].content;
+            previewBtn.style.display = (game === 'racing') ? 'block' : 'none';
+            
+            modal.style.display = 'block';
+        }
+
+        function closeRules() { document.getElementById('rules-modal').style.display = 'none'; }
+
+        // --- 3. THREE.JS LOGIC (Background & Modal) ---
+        const canvas = document.getElementById('bg-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+
+        const particlesGeometry = new THREE.BufferGeometry();
+        const count = 1000;
+        const pos = new Float32Array(count * 3);
+        for(let i=0; i<count*3; i++) pos[i] = (Math.random()-0.5)*20;
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const particles = new THREE.Points(particlesGeometry, new THREE.PointsMaterial({ color: 0x06b6d4, size: 0.03, transparent: true, opacity: 0.3 }));
+        scene.add(particles);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            particles.rotation.y += 0.001;
+            renderer.render(scene, camera);
+        }
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        animate();
+
+        // 3D Preview
+        let mRenderer, mScene, mCamera;
+        function openPreview() {
+            closeRules();
+            document.getElementById('preview-modal').style.display = 'block';
+            const container = document.getElementById('modal-canvas-container');
+            mScene = new THREE.Scene();
+            mCamera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            mCamera.position.set(2, 2, 5);
+            mCamera.lookAt(0,0,0);
+            mRenderer = new THREE.WebGLRenderer({ antialias: true });
+            mRenderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(mRenderer.domElement);
+            
+            const light = new THREE.PointLight(0xffffff, 10); light.position.set(5,5,5); mScene.add(light);
+            mScene.add(new THREE.AmbientLight(0xffffff, 1));
+
+            const loader = new THREE.GLTFLoader();
+            loader.load('nissan.glb', (gltf) => mScene.add(gltf.scene));
+            loader.load('circuit.glb', (gltf) => { gltf.scene.position.y = -1; gltf.scene.scale.set(0.1,0.1,0.1); mScene.add(gltf.scene); });
+
+            function renderM() {
+                if(document.getElementById('preview-modal').style.display === 'none') return;
+                requestAnimationFrame(renderM);
+                mScene.rotation.y += 0.01;
+                mRenderer.render(mScene, mCamera);
+            }
+            renderM();
+        }
+        function closePreview() { 
+            document.getElementById('preview-modal').style.display = 'none';
+            document.getElementById('modal-canvas-container').innerHTML = '';
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

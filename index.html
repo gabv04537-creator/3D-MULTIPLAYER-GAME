@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Multiplayer Lobby</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; font-family: 'Courier New', monospace; background: #000; touch-action: none; }
+        canvas { display: block; }
+
+        /* --- CHARACTER SELECTION OVERLAY --- */
+        #selection-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #1a1a1a 0%, #000 100%);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 5000; color: white;
+        }
+
+        .shape-container { display: flex; gap: 20px; margin-top: 20px; }
+
+        .shape-btn {
+            width: 100px; height: 100px; border: 2px solid gold; border-radius: 10px;
+            background: rgba(255, 215, 0, 0.1); cursor: pointer;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .shape-btn:hover { background: rgba(255, 215, 0, 0.3); transform: scale(1.1); }
+        .shape-btn span { margin-top: 10px; font-weight: bold; color: gold; font-size: 12px; }
+
+        .preview-box { width: 30px; height: 30px; background: gold; }
+        .preview-sphere { width: 30px; height: 30px; background: gold; border-radius: 50%; }
+        .preview-capsule { width: 20px; height: 40px; background: gold; border-radius: 20px; }
+
+        /* --- UI PANELS --- */
+        #gui-left {
+            position: absolute; top: 10px; left: 10px;
+            color: white; background: rgba(0, 0, 0, 0.8);
+            padding: 12px; border-radius: 10px; pointer-events: auto;
+            border: 1px solid gold; z-index: 10; font-size: 12px;
+        }
+
+        #gui-right {
+            position: absolute; top: 10px; right: 10px;
+            color: white; background: rgba(0, 0, 0, 0.8);
+            padding: 12px; border-radius: 10px; width: 140px;
+            border: 1px solid gold; z-index: 10; font-size: 12px;
+        }
+
+        /* --- BOARD VOTING UI --- */
+        #active-vote-card {
+            position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9); border: 2px solid gold; border-radius: 15px;
+            padding: 20px; color: white; text-align: center; display: none; z-index: 4000;
+            min-width: 220px; box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+        #ready-btn {
+            background: gold; color: black; border: none; padding: 10px 20px;
+            font-weight: bold; border-radius: 5px; cursor: pointer; margin-top: 10px;
+            width: 100%; text-transform: uppercase;
+        }
+
+        /* --- CHAT SYSTEM (GOLD THEME) --- */
+        #chat-container {
+            position: absolute; bottom: 100px; left: 10px; 
+            width: 240px; height: 160px; background: rgba(0, 0, 0, 0.85); 
+            border: 1px solid gold; border-radius: 8px; 
+            display: flex; flex-direction: column; z-index: 2000; 
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        #chat-messages { flex-grow: 1; overflow-y: auto; padding: 8px; color: #fff; font-size: 12px; line-height: 1.4; }
+        #chat-input { width: 100%; background: #111; border: none; border-top: 1px solid gold; color: gold; padding: 10px; box-sizing: border-box; font-size: 14px; outline: none; }
+
+        /* --- INVENTORY --- */
+        #inventory-bar {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
+            display: flex; gap: 15px; background: rgba(0,0,0,0.9); 
+            padding: 12px; border-radius: 15px; border: 1px solid gold; z-index: 3000;
+        }
+
+        .slot {
+            width: 50px; height: 50px; background: rgba(255,255,255,0.05); 
+            border: 1px solid #444; color: white; display: flex; 
+            align-items: center; justify-content: center; font-size: 16px;
+            border-radius: 8px; transition: all 0.2s; cursor: pointer;
+        }
+
+        .slot.active { border-color: gold; background: rgba(255, 215, 0, 0.2); transform: scale(1.1); box-shadow: 0 0 10px gold; }
+
+        #jump-btn {
+            position: fixed; bottom: 25px; right: 20px;
+            width: 75px; height: 75px; background: rgba(255, 215, 0, 0.2);
+            border: 2px solid gold; border-radius: 50%; color: gold;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 14px; z-index: 3000;
+        }
+
+        #cooking-menu {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            background: #111; border: 2px solid gold; padding: 25px; 
+            color: white; z-index: 6000; text-align: center; border-radius: 20px;
+            width: 80%; max-width: 280px; box-shadow: 0 0 30px black;
+        }
+
+        .menu-btn {
+            background: #222; color: white; border: 1px solid gold;
+            padding: 15px; margin: 5px 0; cursor: pointer; border-radius: 10px;
+            font-weight: bold; width: 100%; font-size: 16px;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="selection-overlay">
+        <h1 style="color: gold; text-shadow: 0 0 10px gold; letter-spacing: 2px; text-align: center;">SYSTEM ACCESS: SELECT AVATAR</h1>
+        <div class="shape-container">
+            <div class="shape-btn" onclick="selectShape('box')">
+                <div class="preview-box"></div>
+                <span>BOX</span>
+            </div>
+            <div class="shape-btn" onclick="selectShape('sphere')">
+                <div class="preview-sphere"></div>
+                <span>SPHERE</span>
+            </div>
+            <div class="shape-btn" onclick="selectShape('capsule')">
+                <div class="preview-capsule"></div>
+                <span>CAPSULE</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="active-vote-card">
+        <h3 id="track-name" style="margin: 0; color: gold;">SYSTEM STATUS</h3>
+        <p id="vote-info" style="font-size: 12px; color: #ccc;">WAITING FOR SIGNAL...</p>
+        <button id="ready-btn">Confirm Status</button>
+    </div>
+
+    <div id="gui-left">
+        <h2 style="margin:0; color: gold; text-transform: uppercase;">Central Lobby</h2>
+        <p id="status" style="margin: 2px 0; color: #00f2ff;">Connecting...</p>
+        <button id="portal-btn" style="background: gold; border:none; padding: 8px 15px; cursor: pointer; border-radius: 5px; font-weight: bold; margin-top:5px;" onclick="window.location.href='callinggame.html'">JOIN CALLING GAME</button>
+    </div>
+
+    <div id="gui-right">
+        <strong style="color: #00f2ff;">USERS_ONLINE</strong>
+        <ul id="player-list" style="list-style: none; padding: 0; margin-top: 5px; font-family: monospace;">
+            <li style="color: gold;">● You</li>
+        </ul>
+    </div>
+
+    <div id="chat-container">
+        <div id="chat-messages"></div>
+        <input type="text" id="chat-input" placeholder="Type a message..." maxlength="100">
+    </div>
+
+    <div id="inventory-bar">
+        <div class="slot active" id="slot-0" onclick="changeSlot(0)">1</div>
+        <div class="slot" id="slot-1" onclick="changeSlot(1)">2</div>
+        <div class="slot" id="slot-2" onclick="changeSlot(2)">3</div>
+    </div>
+
+    <div id="jump-btn">JUMP</div>
+
+    <div id="cooking-menu" class="hidden">
+        <h2 style="color: gold; margin-top: 0;">REPLICATOR MENU</h2>
+        <button class="menu-btn" onclick="orderFood('Burger')">Burger</button>
+        <button class="menu-btn" onclick="orderFood('Pizza')">Pizza</button>
+        <button class="menu-btn" onclick="orderFood('Cola')">Cola</button>
+        <br><br>
+        <button onclick="document.getElementById('cooking-menu').classList.add('hidden')" style="background: #440000; color: white; border: 1px solid gold; padding: 10px; border-radius: 10px; cursor: pointer; width: 100%;">Close Menu</button>
+    </div>
+
+    <script>
+        // --- BUTTON LOGIC ---
+        function selectShape(type) {
+            localStorage.setItem('playerShape', type);
+            document.getElementById('selection-overlay').classList.add('hidden');
+            window.dispatchEvent(new Event('gameStart'));
+        }
+
+        function changeSlot(index) {
+            document.querySelectorAll('.slot').forEach((s, i) => {
+                if(i === index) s.classList.add('active');
+                else s.classList.remove('active');
+            });
+            window.dispatchEvent(new CustomEvent('slotChanged', { detail: index }));
+        }
+
+        window.orderFood = function(item) {
+            window.dispatchEvent(new CustomEvent('itemOrdered', { detail: item }));
+        };
+
+        const jumpBtn = document.getElementById('jump-btn');
+        jumpBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            window.dispatchEvent(new Event('mobileJump'));
+        });
+
+        // --- CHAT LOGIC ---
+        const chatInput = document.getElementById('chat-input');
+        const chatMessages = document.getElementById('chat-messages');
+        let globalSocket = null;
+
+        window.addEventListener('socketReady', (e) => {
+            globalSocket = e.detail;
+            document.getElementById('status').innerText = "Signal: Stable";
+            
+            globalSocket.on('chatMessage', (data) => {
+                const msgDiv = document.createElement('div');
+                msgDiv.style.padding = "2px 0";
+                // Show actual message, no more REDACTED
+                msgDiv.innerHTML = `<span style="color:gold;">${data.name || 'Guest'}:</span> ${data.message}`;
+                chatMessages.appendChild(msgDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                window.dispatchEvent(new CustomEvent('show3DBubble', { detail: data }));
+            });
+        });
+
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const text = chatInput.value.trim();
+                if (text !== "" && globalSocket) {
+                    globalSocket.emit('chatMessage', text);
+                    chatInput.value = "";
+                    chatInput.blur();
+                }
+            }
+        });
+
+        const readyBtn = document.getElementById('ready-btn');
+        let isReady = false;
+        readyBtn.onclick = () => {
+            if (!globalSocket) return;
+            isReady = !isReady;
+            readyBtn.innerText = isReady ? "LOCKED" : "Confirm Status";
+            readyBtn.style.background = isReady ? "#00ff88" : "gold";
+            globalSocket.emit('playerReady', isReady);
+        };
+    </script>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+            "three/examples/jsm/loaders/GLTFLoader.js": "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js",
+            "three/examples/jsm/objects/Sky.js": "https://unpkg.com/three@0.160.0/examples/jsm/objects/Sky.js"
+        }
+    }
+    </script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>

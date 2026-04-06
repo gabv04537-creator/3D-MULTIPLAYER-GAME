@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Herd Mentality Mini-Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #87ceeb; }
+        
+        /* Central UI for Questions and Timer */
+        #ui {
+            position: absolute; top: 20px; width: 100%;
+            text-align: center; color: white; pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        /* Hidden by default until game logic updates it */
+        #question { 
+            font-size: 24px; font-weight: bold; background: rgba(0,0,0,0.6); 
+            padding: 12px 20px; border-radius: 12px; display: inline-block; 
+            border: 2px solid gold; pointer-events: auto; min-width: 200px;
+        }
+        #timer { font-size: 18px; color: gold; margin-top: 5px; font-weight: bold; }
+        #player-count-msg { font-size: 14px; color: #eee; margin-top: 5px; }
+
+        /* Leaderboard (Right Side) */
+        #gui-right {
+            position: absolute; top: 20px; right: 20px;
+            color: white; background: rgba(0, 0, 0, 0.6);
+            padding: 15px; border-radius: 10px; width: 180px;
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 20;
+        }
+        #player-list { list-style: none; padding: 0; margin: 10px 0 0 0; font-size: 0.9rem; }
+        
+        /* Joystick */
+        #joystick-zone {
+            position: absolute; bottom: 50px; left: 50px; 
+            width: 150px; height: 150px; z-index: 100;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div id="question">Connecting...</div>
+        <div id="timer"></div>
+        <div id="player-count-msg"></div>
+    </div>
+
+    <div id="gui-right">
+        <strong style="color: #00ffcc;">The Herd</strong>
+        <ul id="player-list">
+            </ul>
+    </div>
+
+    <div id="joystick-zone"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module" src="herd_game.js"></script>
+</body>
+</html>

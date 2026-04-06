@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Racing - Pro Pit System v2.8 (Full Crew)</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: #000; 
+            font-family: 'Courier New', Courier, monospace; 
+            touch-action: none; 
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #container { width: 100vw; height: 100vh; touch-action: none; }
+
+        @media (max-width: 768px) {
+            #timer-display { scale: 0.8; transform-origin: top left; left: 10px !important; top: 10px !important; }
+            #leaderboard { scale: 0.7; transform-origin: top right; right: 10px !important; top: 10px !important; min-width: 150px !important; }
+            #spec-hud { scale: 0.7; transform-origin: right center; right: 10px !important; top: 140px !important; }
+            #hud-container { bottom: 110px !important; scale: 0.9; }
+            .light { width: 25px !important; height: 25px !important; }
+        }
+
+        #hud-container { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; align-items: flex-end; pointer-events: none; z-index: 10; }
+        .hud-gauge { background: rgba(0,0,0,0.8); border: 2px solid #fff; padding: 10px; text-align: center; color: white; min-width: 120px; }
+        #speed-val { font-size: 32px; font-weight: bold; color: #0ff; }
+        #boost-bar { width: 100%; height: 12px; background: #222; margin-top: 5px; border: 1px solid #444; }
+        #boost-fill { width: 100%; height: 100%; background: linear-gradient(to right, #004444, #00ffff); transition: width 0.1s; }
+        #timer-display { position: absolute; top: 20px; left: 20px; color: white; background: rgba(0,0,0,0.6); padding: 15px; border-left: 5px solid #0ff; z-index: 10; }
+        #pit-msg { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: #fbff00; font-size: 40px; font-weight: bold; display: none; text-shadow: 3px 3px #000; z-index: 20; text-align: center; }
+        #offtrack-msg { position: absolute; top: 25%; left: 50%; transform: translate(-50%, -50%); color: #ff4444; font-size: 30px; font-weight: bold; display: none; text-align: center; z-index: 20; }
+        #start-lights { position: absolute; top: 50px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; z-index: 100; background: #222; padding: 10px; border-radius: 10px; border: 3px solid #444; }
+        .light { width: 40px; height: 40px; background: #111; border-radius: 50%; border: 2px solid #000; }
+        .light.red { background: #ff0000; box-shadow: 0 0 20px #ff0000; }
+        .light.green { background: #00ff00; box-shadow: 0 0 20px #00ff00; }
+        #leaderboard { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.8); color: #fff; padding: 15px; border: 1px solid #0ff; min-width: 200px; z-index: 30; }
+        .lb-entry { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding: 5px 0; }
+        .lb-rank { color: #fbff00; font-weight: bold; margin-right: 10px; }
+        #spec-hud { position: absolute; top: 200px; right: 20px; color: white; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #fff; display: block; }
+        #team-color-indicator { margin-top: 5px; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+        #color-swatch { width: 15px; height: 15px; border: 1px solid #fff; }
+        
+        #mobile-controls { 
+            display: none; 
+            position: absolute; 
+            bottom: 20px; 
+            width: 100%; 
+            justify-content: space-between; 
+            padding: 0 20px; 
+            box-sizing: border-box; 
+            z-index: 100; 
+            pointer-events: none;
+        }
+        .control-btn { 
+            width: 80px; 
+            height: 80px; 
+            background: rgba(255, 255, 255, 0.15); 
+            border-radius: 50%; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            color: white; 
+            border: 2px solid rgba(255,255,255,0.5); 
+            touch-action: none; 
+            font-weight: bold;
+            pointer-events: auto;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .control-btn:active { background: rgba(255,255,255,0.4); }
+
+        @media (pointer: coarse) { #mobile-controls { display: flex; } }
+    </style>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+    <div id="start-lights">
+        <div class="light" id="L1"></div>
+        <div class="light" id="L2"></div>
+        <div class="light" id="L3"></div>
+        <div class="light" id="L4"></div>
+        <div class="light" id="L5"></div>
+    </div>
+
+    <div id="leaderboard">
+        <div style="text-align:center; border-bottom: 2px solid #0ff; margin-bottom: 5px;">LIVE STANDINGS</div>
+        <div id="lb-content"></div>
+    </div>
+
+    <div id="spec-hud">
+        SPECTATING: <span id="target-name">LOCAL_PLAYER</span><br>
+        MODE: <span id="cam-mode">CHASE</span><br>
+        [C] CAMERA | [V] TARGET | [K] START RACE
+    </div>
+
+    <div id="pit-msg">PIT STOP<br><span id="pit-timer" style="font-size:24px">WAITING...</span></div>
+    <div id="offtrack-msg">OFF TRACK!<br><span id="offtrack-timer">30.0</span></div>
+
+    <div id="timer-display">
+        <div id="lap-num">LAP: 0 / 6</div>
+        <div id="lap-timer" style="font-size: 28px; color: #fbff00;">00:00.000</div>
+        <div id="last-lap" style="font-size: 14px; color: #0f0;">PREV: --:--.---</div>
+        <div id="penalty-box" style="color:#ff4444">OFF-TRACKS: 0</div>
+        <div id="team-color-indicator">TEAM: <div id="color-swatch"></div></div>
+    </div>
+
+    <div id="hud-container">
+        <div class="hud-gauge">
+            <div id="speed-val">0</div>
+            <div>KM/H</div>
+        </div>
+        <div class="hud-gauge">
+            <div>NOS TANK</div>
+            <div id="boost-bar"><div id="boost-fill"></div></div>
+        </div>
+    </div>
+
+    <div id="container"></div>
+
+    <div id="mobile-controls">
+        <div style="display:flex; flex-direction: column; gap:15px; align-items: center;">
+            <div class="control-btn" id="btn-boost" style="background:rgba(0,255,255,0.2); width:60px; height:60px;">NOS</div>
+            <div style="display:flex; gap:10px">
+                <div class="control-btn" id="btn-left">L</div>
+                <div class="control-btn" id="btn-right">R</div>
+            </div>
+        </div>
+        <div style="display:flex; flex-direction: column; gap:15px; justify-content: flex-end;">
+            <div class="control-btn" id="btn-brake" style="background:rgba(255,0,0,0.2); width:70px; height:70px;">BRK</div>
+            <div class="control-btn" id="btn-gas" style="background:rgba(0,255,0,0.2); width:100px; height:100px;">GAS</div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+        const socket = io(); 
+        let otherPlayers = {};
+
+        const CONFIG = {
+            TRACK_SCALE: 2.5, 
+            MAX_SPEED: 1.3, 
+            BOOST_SPEED: 1.9, 
+            ACCEL: 0.06,
+            FRICTION: 0.98, 
+            OFF_TRACK_PENALTY: 0.1, 
+            HANDLING: 0.045, 
+            NOS_REGEN: 0.0015, 
+            NOS_DRAIN: 0.012,
+            PIT_COOLDOWN: 5000, 
+            DQ_TIME: 3000,
+            CAM_SMOOTH: 0.12
+        };
+
+        let scene, camera, renderer, car, finishLine;
+        let trackMesh = [], grassMesh = [], pitZones = [], barrierMesh = [], safeZones = [];
+        let speed = 0, nosAmount = 1.0, isDisqualified = false, raceStarted = false;
+        let lapStartTime = 0, currentLap = 0, totalLaps = 6, timerActive = false, canTriggerLap = true;
+        let inPitStop = false, pitCrew = [], lastPitTime = 0;
+        let offTrackStartTime = null, totalOffTracks = 0;
+        let teamColor = new THREE.Color().setHSL(Math.random(), 0.8, 0.5);
+        
+        let camMode = 'CHASE'; 
+        let spectatingID = 'local';
+        const CAM_MODES = ['CHASE', 'POV', 'TRACK', 'GRID'];
+
+        const input = { forward: false, backward: false, left: false, right: false, boost: false };
+        
+        // Setup Loaders with Draco Support
+        const loader = new GLTFLoader();
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+        loader.setDRACOLoader(dracoLoader);
+
+        const downRaycaster = new THREE.Raycaster();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); 
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('container').appendChild(renderer.domElement);
+            document.getElementById('color-swatch').style.backgroundColor = '#' + teamColor.getHexString();
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.8)); 
+            const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+            sun.position.set(50, 100, 50);
+            scene.add(sun);
+
+            loader.load('circuit.glb', (gltf) => {
+                const track = gltf.scene;
+                track.scale.set(CONFIG.TRACK_SCALE, CONFIG.TRACK_SCALE, CONFIG.TRACK_SCALE);
+                scene.add(track);
+                track.traverse((child) => {
+                    if (child.isMesh) {
+                        const name = child.name.toLowerCase();
+                        if (name.includes('road') || name.includes('track')) trackMesh.push(child);
+                        if (name.includes('grass')) grassMesh.push(child);
+                        if (name.includes('barrier') || name.includes('wall')) barrierMesh.push(child);
+                        if (name.includes('kerb') || name.includes('curb')) safeZones.push(child);
+                        if (name.includes('pitlane')) {
+                            pitZones.push(child);
+                            createPitMarker(child);
+                        }
+                    }
+                });
+            });
+
+            car = new THREE.Group();
+            loader.load('nissan.glb', (gltf) => { 
+                car.add(gltf.scene); 
+                car.rotation.y = 0;
+                socket.emit('playerMovement', { room: "racing", x: car.position.x, y: 0.1, z: car.position.z, yaw: 0 });
+            });
+            scene.add(car);
+
+            createFinishLine();
+            setupControls();
+            
+            socket.on('gridSpawn', (spot) => {
+                const index = spot.index || 0;
+                const row = Math.floor(index / 2);
+                const side = index % 2 === 0 ? 1 : -1; 
+                car.position.set(side * 4, 0.1, 10 - (row * 8));
+                car.rotation.y = 0; 
+                speed = 0;
+                raceStarted = false;
+            });
+
+            socket.on('startCountdown', () => runStartSequence());
+
+            socket.on('playerMoved', (data) => {
+                if(data.id === socket.id) return;
+                if(!otherPlayers[data.id]) {
+                    const pGroup = new THREE.Group();
+                    loader.load('nissan.glb', (gltf) => { 
+                        pGroup.add(gltf.scene); 
+                        otherPlayers[data.id] = pGroup;
+                        scene.add(pGroup);
+                    });
+                } else {
+                    otherPlayers[data.id].position.set(data.x, data.y, data.z);
+                    otherPlayers[data.id].rotation.y = data.yaw;
+                }
+            });
+
+            socket.on('playerDisconnected', (id) => {
+                if(otherPlayers[id]) {
+                    scene.remove(otherPlayers[id]);
+                    delete otherPlayers[id];
+                }
+            });
+
+            socket.on('raceTicker', (data) => {
+                updateLeaderboardUI(data.leaderboard);
+            });
+
+            renderer.setAnimationLoop(update);
+        }
+
+        function runStartSequence() {
+            raceStarted = false;
+            const lights = [document.getElementById('L1'), document.getElementById('L2'), document.getElementById('L3'), document.getElementById('L4'), document.getElementById('L5')];
+            lights.forEach(l => { l.classList.remove('red', 'green'); });
+            let i = 0;
+            const interval = setInterval(() => {
+                if(i < 5) {
+                    lights[i].classList.add('red');
+                    i++;
+                } else {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        lights.forEach(l => { l.classList.remove('red'); l.classList.add('green'); });
+                        raceStarted = true;
+                        setTimeout(() => lights.forEach(l => l.classList.remove('green')), 2000);
+                    }, 1000 + Math.random() * 2000);
+                }
+            }, 1000);
+        }
+
+        function updateLeaderboardUI(list) {
+            const container = document.getElementById('lb-content');
+            if(!container) return;
+            container.innerHTML = '';
+            list.forEach((p, index) => {
+                const row = document.createElement('div');
+                row.className = 'lb-entry';
+                row.innerHTML = `<span><span class="lb-rank">#${index+1}</span> ${p.name.substring(0,10)}</span><span>L${p.laps}</span>`;
+                container.appendChild(row);
+            });
+        }
+
+        function updatePhysics() {
+            if (!car || car.children.length === 0 || inPitStop || !raceStarted) return;
+
+            downRaycaster.set(car.position.clone().add(new THREE.Vector3(0,1,0)), new THREE.Vector3(0,-1,0));
+            const onTrack = downRaycaster.intersectObjects(trackMesh).length > 0;
+            const inSafeZone = downRaycaster.intersectObjects(safeZones).length > 0; 
+            const inPitArea = downRaycaster.intersectObjects(pitZones).length > 0;
+            const onGrass = !onTrack && !inSafeZone && !inPitArea;
+
+            if (onGrass && !isDisqualified) {
+                if (offTrackStartTime === null) {
+                    offTrackStartTime = Date.now();
+                    totalOffTracks++;
+                    document.getElementById('penalty-box').innerText = `OFF-TRACKS: ${totalOffTracks}`;
+                }
+                const timeOffTrack = Date.now() - offTrackStartTime;
+                const timeLeft = Math.max(0, (CONFIG.DQ_TIME - timeOffTrack) / 1000);
+                document.getElementById('offtrack-msg').style.display = 'block';
+                document.getElementById('offtrack-timer').innerText = timeLeft.toFixed(1) + "s";
+                if (timeOffTrack >= CONFIG.DQ_TIME) {
+                    isDisqualified = true;
+                    document.getElementById('penalty-box').innerText = "STATUS: DQ";
+                }
+            } else {
+                offTrackStartTime = null;
+                document.getElementById('offtrack-msg').style.display = 'none';
+            }
+
+            if (!isDisqualified) {
+                let speedMultiplier = onGrass ? CONFIG.OFF_TRACK_PENALTY : 1.0;
+                speed *= CONFIG.FRICTION;
+                
+                if (input.forward) speed += CONFIG.ACCEL;
+                if (input.backward) speed -= CONFIG.ACCEL;
+                
+                if (input.boost && nosAmount > 0) { 
+                    speed += (CONFIG.ACCEL * 1.2); 
+                    nosAmount = Math.max(0, nosAmount - CONFIG.NOS_DRAIN); 
+                } else { 
+                    nosAmount = Math.min(1.0, nosAmount + CONFIG.NOS_REGEN); 
+                }
+
+                speed = THREE.MathUtils.clamp(speed, -0.4, CONFIG.MAX_SPEED);
+                car.translateZ(speed * speedMultiplier);
+
+                if (Math.abs(speed) > 0.05) {
+                    const turn = (onTrack || inSafeZone || inPitArea) ? CONFIG.HANDLING : CONFIG.HANDLING * 0.4;
+                    if (input.left) car.rotation.y += turn;
+                    if (input.right) car.rotation.y -= turn;
+                }
+            }
+            
+            if (inPitArea && Math.abs(speed) < 0.15) triggerPitStop();
+
+            socket.emit('playerMovement', { 
+                x: car.position.x, y: car.position.y, z: car.position.z, yaw: car.rotation.y, room: "racing" 
+            });
+        }
+
+        function triggerPitStop() {
+            const now = Date.now();
+            if (inPitStop || Math.abs(speed) > 0.15 || (now - lastPitTime < CONFIG.PIT_COOLDOWN)) return;
+            inPitStop = true;
+            lastPitTime = now;
+            speed = 0;
+            document.getElementById('pit-msg').style.display = 'block';
+            spawnHumanoidPitCrew();
+            let remaining = 4.0;
+            const countdown = setInterval(() => {
+                remaining -= 0.1;
+                document.getElementById('pit-timer').innerText = remaining.toFixed(1) + "s";
+                if(remaining <= 0) { clearInterval(countdown); exitPit(); }
+            }, 100);
+        }
+
+        function exitPit() {
+            inPitStop = false;
+            document.getElementById('pit-msg').style.display = 'none';
+            pitCrew.forEach(c => car.remove(c.group));
+            pitCrew = [];
+            nosAmount = 1.0;
+            totalOffTracks = 0;
+            isDisqualified = false;
+            document.getElementById('penalty-box').innerText = "OFF-TRACKS: 0";
+        }
+
+        function spawnHumanoidPitCrew() {
+            const positions = [{x: 2, z: 1}, {x: -2, z: 1}, {x: 2, z: -1}, {x: -2, z: -1}];
+            positions.forEach(pos => {
+                const group = new THREE.Group();
+                const mat = new THREE.MeshStandardMaterial({color: teamColor});
+                const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.7), mat);
+                body.position.y = 0.5;
+                group.add(body);
+                group.position.set(pos.x, 0, pos.z);
+                car.add(group);
+                pitCrew.push({ group });
+            });
+        }
+
+        function update() {
+            if (!car || car.children.length === 0) {
+                if (renderer && scene && camera) renderer.render(scene, camera);
+                return;
+            }
+            updatePhysics();
+            
+            if (finishLine) {
+                const distToFinish = car.position.distanceTo(finishLine.position);
+                if (distToFinish < 15 && canTriggerLap && !isDisqualified) {
+                    if (timerActive) {
+                        const finalTime = Date.now() - lapStartTime;
+                        document.getElementById('last-lap').innerText = `PREV: ${formatTime(finalTime)}`;
+                        currentLap++;
+                        socket.emit('submitLapTime', finalTime / 1000);
+                    }
+                    lapStartTime = Date.now();
+                    timerActive = true;
+                    canTriggerLap = false;
+                    document.getElementById('lap-num').innerText = `LAP: ${currentLap} / ${totalLaps}`;
+                    setTimeout(() => canTriggerLap = true, 5000); 
+                }
+            }
+
+            if (timerActive) {
+                document.getElementById('lap-timer').innerText = formatTime(Date.now() - lapStartTime);
+            }
+            
+            document.getElementById('speed-val').innerText = Math.round(Math.abs(speed) * 155);
+            document.getElementById('boost-fill').style.width = (nosAmount * 100) + "%";
+
+            let targetObject = car;
+            if(spectatingID !== 'local' && otherPlayers[spectatingID]) {
+                targetObject = otherPlayers[spectatingID];
+            }
+
+            if (camMode === 'CHASE') {
+                const camOffset = new THREE.Vector3(0, 3.5, -9).applyMatrix4(targetObject.matrixWorld);
+                camera.position.lerp(camOffset, CONFIG.CAM_SMOOTH);
+                camera.lookAt(targetObject.position.clone().add(new THREE.Vector3(0, 1, 0)));
+            } else if (camMode === 'POV') {
+                const povPos = new THREE.Vector3(0, 1.2, 0.5).applyMatrix4(targetObject.matrixWorld);
+                camera.position.copy(povPos);
+                camera.lookAt(new THREE.Vector3(0, 1.2, 10).applyMatrix4(targetObject.matrixWorld));
+            } else {
+                camera.position.lerp(new THREE.Vector3(30, 20, 30), 0.05);
+                camera.lookAt(targetObject.position);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function createFinishLine() {
+            const geo = new THREE.BoxGeometry(60, 0.1, 4);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+            finishLine = new THREE.Mesh(geo, mat);
+            finishLine.position.set(0, 0.2, 40); 
+            scene.add(finishLine);
+        }
+
+        function createPitMarker(mesh) {
+            const geo = new THREE.PlaneGeometry(6, 6);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide, transparent: true, opacity: 0.3 });
+            const marker = new THREE.Mesh(geo, mat);
+            marker.rotation.x = -Math.PI / 2;
+            marker.position.y = 0.1;
+            mesh.add(marker);
+        }
+
+        function formatTime(ms) {
+            const m = Math.floor(ms / 60000);
+            const s = Math.floor((ms % 60000) / 1000);
+            const mil = Math.floor(ms % 1000);
+            return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${mil.toString().padStart(3,'0')}`;
+        }
+
+        function setupControls() {
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w') input.forward = true;
+                if (k === 's') input.backward = true;
+                if (k === 'a') input.left = true;
+                if (k === 'd') input.right = true;
+                if (e.shiftKey) input.boost = true;
+                if (k === 'c') {
+                    camMode = CAM_MODES[(CAM_MODES.indexOf(camMode) + 1) % CAM_MODES.length];
+                    document.getElementById('cam-mode').innerText = camMode;
+                }
+                if (k === 'v') {
+                    const ids = ['local', ...Object.keys(otherPlayers)];
+                    spectatingID = ids[(ids.indexOf(spectatingID) + 1) % ids.length];
+                    document.getElementById('target-name').innerText = spectatingID === 'local' ? "LOCAL_PLAYER" : spectatingID;
+                }
+                if (k === 'k') socket.emit('requestRaceStart');
+            });
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w') input.forward = false;
+                if (k === 's') input.backward = false;
+                if (k === 'a') input.left = false;
+                if (k === 'd') input.right = false;
+                if (!e.shiftKey) input.boost = false;
+            });
+
+            const setupMobile = (id, key) => {
+                const el = document.getElementById(id);
+                if(!el) return;
+                el.addEventListener('touchstart', (e) => { 
+                    if(e.cancelable) e.preventDefault(); 
+                    input[key] = true; 
+                }, {passive: false});
+                
+                el.addEventListener('touchend', (e) => { 
+                    if(e.cancelable) e.preventDefault(); 
+                    input[key] = false; 
+                }, {passive: false});
+
+                el.addEventListener('touchcancel', (e) => { 
+                    input[key] = false; 
+                }, {passive: false});
+            };
+
+            setupMobile('btn-left', 'left');
+            setupMobile('btn-right', 'right');
+            setupMobile('btn-gas', 'forward');
+            setupMobile('btn-brake', 'backward');
+            setupMobile('btn-boost', 'boost');
+        }
+
+        window.onresize = () => { 
+            camera.aspect = window.innerWidth / window.innerHeight; 
+            camera.updateProjectionMatrix(); 
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+        };
+        init();
+    </script>
+</body>
+</html>
